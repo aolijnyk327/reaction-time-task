@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Reaction Time Experiment</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f4f7f6; }
+        #container { text-align: center; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 90%; max-width: 650px; }
+        .hidden { display: none !important; }
+        #target-circle { position: absolute; width: 80px; height: 80px; background: #ff4757; border-radius: 50%; cursor: pointer; display: none; }
+        button { padding: 12px 25px; cursor: pointer; background: #2f3542; color: white; border: none; border-radius: 8px; font-weight: bold; }
+        input { padding: 10px; margin: 10px; border: 1px solid #ccc; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+    <div id="container">
+        <div id="screen-welcome">
+            <h1>Reaction Time Task</h1>
+            <p>Click the 10 circles as fast as you can.</p>
+            <input type="text" id="participant-id" placeholder="ID (Optional)">
+            <button id="btn-start">Start Task</button>
+        </div>
+
+        <div id="screen-task" class="hidden">
+            <div id="target-circle"></div>
+        </div>
+
+        <div id="screen-end" class="hidden">
+            <h2>Community Comparison</h2>
+            <p id="status-text">Loading histogram...</p>
+            <canvas id="rtChart"></canvas>
+            <button onclick="window.location.reload()" style="margin-top:20px">Restart</button>
+        </div>
+    </div>
+
+    <script>
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxIi8zlt8rVFJQ6WtdxPWMX-dhIPwshFq6U-Rx8GEFuMPwHW_O-RfzCOHdpyOW9gAlO/exec"; 
+        let results = [];
+        let currentTrial = 0;
+        let startTime = 0;
+        let userAvg = 0;
+
+        const target = document.getElementById('target-circle');
+
+        document.getElementById('btn-start').onclick = () => {
+            const idInput = document.getElementById('participant-id').value.trim();
+            window.pId = idInput || Math.random().toString(36).substr(2, 6).toUpperCase();
+            document.getElementById('screen-welcome').classList.add('hidden');
+            document.getElementById('screen-task').classList.remove('hidden');
+            startTrial();
+        };
+
+        function startTrial() {
+            if (currentTrial >= 10) { finishExperiment(); return; }
+            target.style.display = 'none';
+            setTimeout(() => {
+                target.style.left = Math.random() * (window.innerWidth - 100) + 'px';
+                target.style.top = Math.random() * (window.innerHeight - 100) + 'px';
+                target.style.display = 'block';
+                startTime = performance.now();
+            }, 500);
+        }
+
+        target.onclick = () => {
+            const rt = Math.round(performance.now() - startTime);
+            results.push({ Participant_ID: window.pId, Trial_Number: ++currentTrial, Reaction_Time: rt });
+            startTrial();
+        };
+
+        function finishExperiment() {
+            document.getElementById('screen-task').classList.add('hidden');
+            document.getElementById('screen-end').classList.remove('hidden');
+            
+            userAvg = results.reduce((a, b) => a + b.Reaction_Time, 0) / results.length;
+
+            // Send results to Google Sheet
+            results.forEach(data => {
+                fetch(WEB_APP_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(data) });
+            });
+
+            // Fetch historical data normally (no JSONP)
+            fetch(WEB_APP_URL)
+                .then(r => r.json())
+                .then(data => handleHistory(data))
+                .catch(err => {
+                    document.getElementById('status-text').innerText = "Error loading data.";
+                    console.error(err);
+                });
+        }
+
+        function handleHistory(historicalData) {
+            document.getElementById('status-text').innerText = `Your Average: ${Math.round(userAvg)}ms`;
+            renderHistogram(historicalData, userAvg);
+        }
+
+        function renderHistogram(data, avg) {
+            const ctx = document.getElementById('rtChart').getContext('2d');
+            const binSize = 50;
+            const bins = {};
+            
+            const allValues = [...data, avg];
+            allValues.forEach(v => {
+                const b = Math.floor(v / binSize) * binSize;
+                bins[b] = (bins[b] || 0) + 1;
+            });
+
+            const labels = Object.keys(bins).sort((a,b) => a-b);
+            const userBin = Math.floor(avg / binSize) * binSize;
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels.map(l => l + 'ms'),
+                    datasets: [{
+                        label: 'Trials',
+                        data: labels.map(l => bins[l]),
+                        backgroundColor: labels.map(l => parseInt(l) === userBin ? '#ff4757' : 'rgba(47, 53, 66, 0.2)'),
+                        borderWidth: 1
+                    }]
+                },
+                options: { plugins: { legend: { display: false } } }
+            });
+        }
+    </script>
+</body>
+</html>
