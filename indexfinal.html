@@ -84,29 +84,25 @@
         };
 
         function finishExperiment() {
-            document.getElementById('screen-task').classList.add('hidden');
-            document.getElementById('screen-end').classList.remove('hidden');
-            
-            userAvg = results.reduce((a, b) => a + b.Reaction_Time, 0) / results.length;
+    document.getElementById('screen-task').classList.add('hidden');
+    document.getElementById('screen-end').classList.remove('hidden');
+    
+    userAvg = results.reduce((a, b) => a + b.Reaction_Time, 0) / results.length;
 
-            // Send results to Google Sheet
-results.forEach(data => {
+    // Send the whole results array at once
     fetch(WEB_APP_URL, {
         method: 'POST',
-        mode: 'no-cors', 
-        cache: 'no-cache',
-        headers: { 'Content-Type': 'application/json' }, // Added this back
-        body: JSON.stringify(data)
+        mode: 'no-cors',
+        body: JSON.stringify(results) 
     });
-});
 
-            // 2. Wait a brief moment for the DB to update, then load the histogram
-            setTimeout(() => {
-                const script = document.createElement("script");
-                script.src = WEB_APP_URL + "?callback=handleHistory";
-                document.body.appendChild(script);
-            }, 1000);
-        }
+    // Wait 1.5 seconds for the sheet to update, then pull the histogram
+    setTimeout(() => {
+        const script = document.createElement("script");
+        script.src = WEB_APP_URL + "?callback=handleHistory";
+        document.body.appendChild(script);
+    }, 1500);
+}
 
         function handleHistory(historicalData) {
             document.getElementById('status-text').innerText = `Your Average: ${Math.round(userAvg)}ms`;
