@@ -38,7 +38,7 @@
 
     <script>
         // REPLACE THIS URL WITH YOUR DEPLOYED APPS SCRIPT URL
-        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxxCfeFZ6mpwrFm1bisRLwHuKkA_8YlIzjgIUutzTF5PzpjbVgmq5fnQLtTQk9amiU8/exec"; 
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw_UYeD_6-QH0Pyl2I_kGr8Jy_f35Zw3-jZkrJkMos7a9XmcX45pI42atxwR-Thy4I/exec"; 
         
         let results = [];
         let currentTrial = 0;
@@ -89,15 +89,16 @@
             
             userAvg = results.reduce((a, b) => a + b.Reaction_Time, 0) / results.length;
 
-            // 1. Send each result to Google Sheets
-            results.forEach(data => {
-                fetch(WEB_APP_URL, {
-                    method: 'POST',
-                    mode: 'no-cors', // Essential for GitHub Pages
-                    cache: 'no-cache',
-                    body: JSON.stringify(data)
-                });
-            });
+            // Send results to Google Sheet
+results.forEach(data => {
+    fetch(WEB_APP_URL, {
+        method: 'POST',
+        mode: 'no-cors', 
+        cache: 'no-cache',
+        headers: { 'Content-Type': 'application/json' }, // Added this back
+        body: JSON.stringify(data)
+    });
+});
 
             // 2. Wait a brief moment for the DB to update, then load the histogram
             setTimeout(() => {
