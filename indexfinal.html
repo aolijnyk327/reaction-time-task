@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Reaction Time Experiment</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f4f7f6; }
+        #container { text-align: center; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 90%; max-width: 650px; position: relative; }
+        .hidden { display: none !important; }
+        #target-circle { position: absolute; width: 80px; height: 80px; background: #ff4757; border-radius: 50%; cursor: pointer; display: none; z-index: 100; }
+        button { padding: 12px 25px; cursor: pointer; background: #2f3542; color: white; border: none; border-radius: 8px; font-weight: bold; }
+        input { padding: 10px; margin: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        #screen-task { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #fff; cursor: crosshair; }
+    </style>
+</head>
+<body>
+
+    <div id="container">
+        <div id="screen-welcome">
+            <h1>Reaction Time Task</h1>
+            <p>Click the 10 circles as fast as you can.</p>
+            <input type="text" id="participant-id" placeholder="ID (Optional)">
+            <button id="btn-start">Start Task</button>
+        </div>
+
+        <div id="screen-task" class="hidden">
+            <div id="target-circle"></div>
+        </div>
+
+        <div id="screen-end" class="hidden">
+            <h2>Community Comparison</h2>
+            <p id="status-text">Submitting results & loading histogram...</p>
+            <canvas id="rtChart"></canvas>
+            <button onclick="window.location.reload()" style="margin-top:20px">Restart</button>
+        </div>
+    </div>
+
+    <script>
+        // REPLACE THIS URL WITH YOUR DEPLOYED APPS SCRIPT URL
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwbl2p6IzNhGgQxbVkxLblf4PyiLG6Pg0slRSOI3qYxpJFLUTdctoledB6MsrqlXZUx/exec"; 
+        
+        let results = [];
+        let currentTrial = 0;
+        let startTime = 0;
+        let userAvg = 0;
+
+        const target = document.getElementById('target-circle');
+
+        document.getElementById('btn-start').onclick = () => {
+            const idInput = document.getElementById('participant-id').value.trim();
+            window.pId = idInput || Math.random().toString(36).substr(2, 6).toUpperCase();
+            document.getElementById('screen-welcome').classList.add('hidden');
+            document.getElementById('screen-task').classList.remove('hidden');
+            startTrial();
+        };
+
+        function startTrial() {
+            if (currentTrial >= 10) { finishExperiment(); return; }
+            target.style.display = 'none';
+            
+            // Random delay between 0.5s and 2s
+            const delay = Math.random() * 1500 + 500;
+            
+            setTimeout(() => {
+                const maxX = window.innerWidth - 100;
+                const maxY = window.innerHeight - 100;
+                target.style.left = Math.random() * maxX + 'px';
+                target.style.top = Math.random() * maxY + 'px';
+                target.style.display = 'block';
+                startTime = performance.now();
+            }, delay);
+        }
+
+        target.onclick = (e) => {
+            e.stopPropagation();
+            const rt = Math.round(performance.now() - startTime);
+            results.push({ 
+                Participant_ID: window.pId, 
+                Trial_Number: ++currentTrial, 
+                Reaction_Time: rt 
+            });
+            startTrial();
+        };
+
+        function finishExperiment() {
+            document.getElementById('screen-task').classList.add('hidden');
+            document.getElementById('screen-end').classList.remove('hidden');
+            
+            userAvg = results.reduce((a, b) => a + b.Reaction_Time, 0) / results.length;
+
+            // 1. Send each result to Google Sheets
+            results.forEach(data => {
+                fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // Essential for GitHub Pages
+                    cache: 'no-cache',
+                    body: JSON.stringify(data)
+                });
+            });
+
+            // 2. Wait a brief moment for the DB to update, then load the histogram
+            setTimeout(() => {
+                const script = document.createElement("script");
+                script.src = WEB_APP_URL + "?callback=handleHistory";
+                document.body.appendChild(script);
+            }, 1000);
+        }
+
+        function handleHistory(historicalData) {
+            document.getElementById('status-text').innerText = `Your Average: ${Math.round(userAvg)}ms`;
+            renderHistogram(historicalData, userAvg);
+        }
+
+        function renderHistogram(data, avg) {
+            const ctx = document.getElementById('rtChart').getContext('2d');
+            const binSize = 50;
+            const bins = {};
+            
+            // Filter out any null/bad data from the sheet and add current user avg
+            const allValues = [...data.filter(v => v !== null), avg];
+            
+            allValues.forEach(v => {
+                const b = Math.floor(v / binSize) * binSize;
+                bins[b] = (bins[b] || 0) + 1;
+            });
+
+            const labels = Object.keys(bins).sort((a,b) => a-b);
+            const userBin = Math.floor(avg / binSize) * binSize;
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels.map(l => l + 'ms'),
+                    datasets: [{
+                        label: 'Trials',
+                        data: labels.map(l => bins[l]),
+                        backgroundColor: labels.map(l => parseInt(l) === userBin ? '#ff4757' : 'rgba(47, 53, 66, 0.2)'),
+                        borderColor: '#2f3542',
+                        borderWidth: 1
+                    }]
+                },
+                options: { 
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, title: { display: true, text: 'Frequency' } },
+                        x: { title: { display: true, text: 'Reaction Time (ms)' } }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
+
